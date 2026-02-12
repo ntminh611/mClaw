@@ -5,7 +5,7 @@
 <h1 align="center">🦞 MClaw</h1>
 
 <p align="center">
-  <b>Ultra-lightweight personal AI assistant</b> inspired by <a href="https://github.com/open-claw/openclaw">OpenClaw</a>, built on <a href="https://github.com/nichochar/picoclaw">PicoClaw</a>.<br>
+  <b>Ultra-lightweight personal AI assistant</b> inspired by <a href="https://github.com/openclaw/openclaw">OpenClaw</a>, built on <a href="https://github.com/sipeed/picoclaw">PicoClaw</a>.<br>
   Multi-channel · Multi-LLM · Intelligent Memory · Single Go binary.
 </p>
 
