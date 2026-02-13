@@ -3,6 +3,8 @@ package tools
 import (
 	"context"
 	"fmt"
+	"log"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -11,14 +13,38 @@ import (
 
 // BrowserTool uses headless Chrome (chromedp) to fetch JS-rendered pages.
 type BrowserTool struct {
-	timeout time.Duration
+	timeout         time.Duration
+	chromeAvailable bool
 }
 
 func NewBrowserTool(timeout time.Duration) *BrowserTool {
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
-	return &BrowserTool{timeout: timeout}
+
+	// Detect Chrome/Chromium
+	available := false
+	chromePaths := []string{
+		"google-chrome",
+		"google-chrome-stable",
+		"chromium",
+		"chromium-browser",
+		"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+	}
+	for _, p := range chromePaths {
+		if _, err := exec.LookPath(p); err == nil {
+			available = true
+			break
+		}
+	}
+
+	if available {
+		log.Printf("[tools] Browser tool: Chrome/Chromium detected ✓")
+	} else {
+		log.Printf("[tools] Browser tool: Chrome/Chromium not found — browser tool disabled")
+	}
+
+	return &BrowserTool{timeout: timeout, chromeAvailable: available}
 }
 
 func (t *BrowserTool) Name() string {
@@ -26,6 +52,9 @@ func (t *BrowserTool) Name() string {
 }
 
 func (t *BrowserTool) Description() string {
+	if !t.chromeAvailable {
+		return "Browser tool (UNAVAILABLE — Chrome/Chromium not installed). Use web_fetch instead."
+	}
 	return "Open a URL in a headless browser, wait for JavaScript to render, and extract the page text. Use this for JS-heavy sites (SPAs, dynamic content) where web_fetch returns empty/useless content."
 }
 
@@ -49,6 +78,15 @@ func (t *BrowserTool) Parameters() map[string]interface{} {
 }
 
 func (t *BrowserTool) Execute(ctx context.Context, args map[string]interface{}) (string, error) {
+	if !t.chromeAvailable {
+		return "Browser tool is unavailable: Chrome/Chromium is not installed on this system. " +
+			"For best results with JavaScript-heavy websites (SPAs, dynamic content), install Chrome or Chromium:\n" +
+			"  • Ubuntu/Debian: sudo apt install chromium-browser\n" +
+			"  • macOS: brew install --cask chromium\n" +
+			"  • Or run: ./setup.sh\n\n" +
+			"For now, use the web_fetch tool instead — it works for most websites without a browser.", nil
+	}
+
 	urlStr, ok := args["url"].(string)
 	if !ok {
 		return "", fmt.Errorf("url is required")

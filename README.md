@@ -37,8 +37,8 @@
 | 📚 **Skills** | Modular knowledge packs, install from GitHub |
 | 🎙️ **Voice** | Speech-to-text via Groq Whisper |
 | 💾 **Sessions** | Persistent history with auto-summarization |
-| ⏰ **Cron** | Scheduled recurring tasks |
-| 💓 **Heartbeat** | Periodic health checks |
+| ⏰ **Cron** | Scheduled recurring tasks with delivery |
+| 💓 **Heartbeat** | Item-based periodic notes & reminders |
 
 ---
 
@@ -106,12 +106,28 @@ mv mclaw-android-arm64 mclaw
 
 > **💡 Tip:** Dùng điện thoại Android cũ + Termux làm mini server chạy MClaw 24/7 — miễn phí, tiết kiệm điện!
 
+### Setup (recommended)
+
+After downloading, run the setup script to install optional dependencies and create config:
+
+```bash
+chmod +x setup.sh
+./setup.sh
+```
+
+The script will:
+- ✅ Detect your OS (macOS, Linux, Termux)
+- ✅ Check & install Chrome/Chromium (optional — for browser tool)
+- ✅ Create `mclawdata/config.json` from example
+- ✅ Initialize workspace directories
+
 ### Option 2: Build from source
 
 ```bash
 git clone https://github.com/ntminh611/mclaw.git
 cd mclaw
 make build
+./setup.sh    # Optional: install dependencies
 ./mclaw start
 ```
 
@@ -140,6 +156,10 @@ Create `mclawdata/config.json` next to the binary (or copy from `config.example.
   },
   "memory": {
     "enabled": true
+  },
+  "heartbeat": {
+    "enabled": true,
+    "interval_minutes": 10
   }
 }
 ```
@@ -231,7 +251,17 @@ Set custom endpoints via `api_base` for proxies or self-hosted models.
 | `exec` | Execute shell commands |
 | `web_search` | Search web (Brave API) |
 | `web_fetch` | Fetch & extract text from URLs |
-| `browser` | Headless Chrome (chromedp) |
+| `browser` | Headless Chrome — auto-disabled if Chrome not installed |
+| `cron` | Add / list / remove scheduled jobs |
+| `heartbeat` | Add / list / remove / enable / disable periodic notes |
+
+> **Note:** The `browser` tool requires Chrome/Chromium installed on the system. If not found, it auto-disables gracefully and suggests using `web_fetch` instead. Install via `./setup.sh` or manually:
+> ```bash
+> # Ubuntu/Debian
+> sudo apt install chromium-browser
+> # macOS
+> brew install --cask chromium
+> ```
 
 ---
 
