@@ -80,6 +80,7 @@ func (c *Consolidator) Consolidate(ctx context.Context, newFact string, existing
 
 	content := strings.TrimSpace(response.Content)
 	content = stripCodeBlock(content)
+	content = repairJSONObject(content)
 
 	var result ConsolidateResult
 	if err := json.Unmarshal([]byte(content), &result); err != nil {

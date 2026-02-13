@@ -3,6 +3,7 @@ package cron
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -52,12 +53,13 @@ type CronStore struct {
 type JobHandler func(job *CronJob) (string, error)
 
 type CronService struct {
-	storePath string
-	store     *CronStore
-	onJob     JobHandler
-	mu        sync.RWMutex
-	running   bool
-	stopChan  chan struct{}
+	storePath   string
+	store       *CronStore
+	onJob       JobHandler
+	mu          sync.RWMutex
+	running     bool
+	stopChan    chan struct{}
+	runningJobs sync.Map // map[string]bool — tracks jobs currently being executed
 }
 
 func NewCronService(storePath string, onJob JobHandler) *CronService {
@@ -127,27 +129,33 @@ func (cs *CronService) checkJobs() {
 	}
 
 	now := time.Now().UnixMilli()
-	var dueJobs []*CronJob
+	var dueJobs []CronJob // copy values to avoid pointer issues
 
 	for i := range cs.store.Jobs {
 		job := &cs.store.Jobs[i]
-		if job.Enabled && job.State.NextRunAtMS != nil && *job.State.NextRunAtMS <= now {
-			dueJobs = append(dueJobs, job)
+		if !job.Enabled || job.State.NextRunAtMS == nil || *job.State.NextRunAtMS > now {
+			continue
 		}
+		// Skip if this job is already running
+		if _, running := cs.runningJobs.Load(job.ID); running {
+			continue
+		}
+		dueJobs = append(dueJobs, *job) // copy the job
 	}
 	cs.mu.RUnlock()
 
 	for _, job := range dueJobs {
-		cs.executeJob(job)
+		jobCopy := job // capture for goroutine
+		cs.runningJobs.Store(jobCopy.ID, true)
+		go cs.executeJob(&jobCopy)
 	}
-
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
-	cs.saveStore()
 }
 
 func (cs *CronService) executeJob(job *CronJob) {
+	defer cs.runningJobs.Delete(job.ID)
+
 	startTime := time.Now().UnixMilli()
+	log.Printf("[cron] Executing job '%s' (ID: %s)", job.Name, job.ID)
 
 	var err error
 	if cs.onJob != nil {
@@ -155,30 +163,50 @@ func (cs *CronService) executeJob(job *CronJob) {
 	}
 
 	cs.mu.Lock()
-	defer cs.mu.Unlock()
 
-	job.State.LastRunAtMS = &startTime
-	job.UpdatedAtMS = time.Now().UnixMilli()
+	// Find the job again in the store (it may have been removed during execution)
+	var storeJob *CronJob
+	for i := range cs.store.Jobs {
+		if cs.store.Jobs[i].ID == job.ID {
+			storeJob = &cs.store.Jobs[i]
+			break
+		}
+	}
+
+	if storeJob == nil {
+		// Job was removed while running
+		cs.mu.Unlock()
+		log.Printf("[cron] Job '%s' was removed during execution", job.Name)
+		return
+	}
+
+	storeJob.State.LastRunAtMS = &startTime
+	storeJob.UpdatedAtMS = time.Now().UnixMilli()
 
 	if err != nil {
-		job.State.LastStatus = "error"
-		job.State.LastError = err.Error()
+		storeJob.State.LastStatus = "error"
+		storeJob.State.LastError = err.Error()
+		log.Printf("[cron] Job '%s' failed: %v", job.Name, err)
 	} else {
-		job.State.LastStatus = "ok"
-		job.State.LastError = ""
+		storeJob.State.LastStatus = "ok"
+		storeJob.State.LastError = ""
+		log.Printf("[cron] Job '%s' completed successfully", job.Name)
 	}
 
-	if job.Schedule.Kind == "at" {
-		if job.DeleteAfterRun {
-			cs.removeJobUnsafe(job.ID)
+	if storeJob.Schedule.Kind == "at" {
+		if storeJob.DeleteAfterRun {
+			cs.removeJobUnsafe(storeJob.ID)
 		} else {
-			job.Enabled = false
-			job.State.NextRunAtMS = nil
+			storeJob.Enabled = false
+			storeJob.State.NextRunAtMS = nil
 		}
 	} else {
-		nextRun := cs.computeNextRun(&job.Schedule, time.Now().UnixMilli())
-		job.State.NextRunAtMS = nextRun
+		nextRun := cs.computeNextRun(&storeJob.Schedule, time.Now().UnixMilli())
+		storeJob.State.NextRunAtMS = nextRun
 	}
+
+	cs.saveStore()
+	cs.mu.Unlock()
 }
 
 func (cs *CronService) computeNextRun(schedule *CronSchedule, nowMS int64) *int64 {

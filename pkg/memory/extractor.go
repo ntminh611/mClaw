@@ -77,6 +77,7 @@ func (e *Extractor) Extract(ctx context.Context, messages []providers.Message) (
 	content = stripCodeBlock(content)
 
 	var facts []ExtractedFact
+	content = repairJSONArray(content)
 	if err := json.Unmarshal([]byte(content), &facts); err != nil {
 		log.Printf("[memory] Failed to parse extraction response: %v (raw: %s)", err, truncate(content, 200))
 		return nil, nil // non-fatal: just skip this extraction
@@ -124,4 +125,67 @@ func stripCodeBlock(s string) string {
 		}
 	}
 	return strings.TrimSpace(s)
+}
+
+// repairJSONArray attempts to fix truncated JSON arrays by closing at the last complete element.
+func repairJSONArray(s string) string {
+	s = strings.TrimSpace(s)
+	if !strings.HasPrefix(s, "[") {
+		return s
+	}
+
+	// Already valid JSON
+	var test json.RawMessage
+	if json.Unmarshal([]byte(s), &test) == nil {
+		return s
+	}
+
+	// Find the last complete object (ending with "}")
+	lastComplete := strings.LastIndex(s, "}")
+	if lastComplete > 0 {
+		repaired := s[:lastComplete+1] + "]"
+		if json.Unmarshal([]byte(repaired), &test) == nil {
+			return repaired
+		}
+	}
+
+	// Fallback: empty array
+	return "[]"
+}
+
+// repairJSONObject attempts to fix truncated JSON objects by closing with missing braces.
+func repairJSONObject(s string) string {
+	s = strings.TrimSpace(s)
+	if !strings.HasPrefix(s, "{") {
+		return s
+	}
+
+	var test json.RawMessage
+	if json.Unmarshal([]byte(s), &test) == nil {
+		return s
+	}
+
+	// Try adding closing brace(s)
+	for _, suffix := range []string{"\"}", "\"\"}", "}", "}}"} {
+		repaired := s + suffix
+		if json.Unmarshal([]byte(repaired), &test) == nil {
+			return repaired
+		}
+	}
+
+	// Try truncating at last complete key-value pair
+	lastQuote := strings.LastIndex(s, "\"")
+	if lastQuote > 0 {
+		// Find the comma or opening brace before the last incomplete field
+		for i := lastQuote; i >= 0; i-- {
+			if s[i] == ',' {
+				repaired := s[:i] + "}"
+				if json.Unmarshal([]byte(repaired), &test) == nil {
+					return repaired
+				}
+			}
+		}
+	}
+
+	return s
 }

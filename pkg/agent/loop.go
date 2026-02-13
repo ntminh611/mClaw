@@ -54,6 +54,8 @@ func NewAgentLoop(cfg *config.Config, bus *bus.MessageBus, provider providers.LL
 	toolsRegistry.Register(tools.NewWebSearchTool(braveAPIKey, cfg.Tools.Web.Search.MaxResults))
 	toolsRegistry.Register(tools.NewWebFetchTool(50000))
 	toolsRegistry.Register(tools.NewBrowserTool(30 * time.Second))
+	toolsRegistry.Register(tools.NewCronTool())
+	toolsRegistry.Register(tools.NewHeartbeatTool())
 
 	sessionsManager := session.NewSessionManager(filepath.Join(filepath.Dir(cfg.WorkspacePath()), "sessions"))
 
@@ -87,6 +89,10 @@ func NewAgentLoop(cfg *config.Config, bus *bus.MessageBus, provider providers.LL
 
 func (al *AgentLoop) GetSessionManager() *session.SessionManager {
 	return al.sessions
+}
+
+func (al *AgentLoop) GetToolRegistry() *tools.ToolRegistry {
+	return al.tools
 }
 
 func (al *AgentLoop) Run(ctx context.Context) error {
@@ -140,6 +146,13 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 	// Per-message timeout to prevent hanging
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
+
+	// Inject current chat context into CronTool for auto-delivery
+	if cronTool, ok := al.tools.Get("cron"); ok {
+		if ct, ok := cronTool.(*tools.CronTool); ok {
+			ct.SetContext(msg.Channel, msg.ChatID)
+		}
+	}
 
 	history := al.sessions.GetHistory(msg.SessionKey)
 	summary := al.sessions.GetSummary(msg.SessionKey)

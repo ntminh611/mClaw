@@ -15,7 +15,13 @@ type Config struct {
 	Providers ProvidersConfig `json:"providers"`
 	Tools     ToolsConfig     `json:"tools"`
 	Memory    MemoryConfig    `json:"memory"`
+	Heartbeat HeartbeatConfig `json:"heartbeat"`
 	mu        sync.RWMutex
+}
+
+type HeartbeatConfig struct {
+	Enabled         bool `json:"enabled" env:"MCLAW_HEARTBEAT_ENABLED"`                   // default true
+	IntervalMinutes int  `json:"interval_minutes" env:"MCLAW_HEARTBEAT_INTERVAL_MINUTES"` // default 10
 }
 
 // MemoryConfig controls the Mem0-lite intelligent memory layer.
