@@ -165,21 +165,32 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 
 	iteration := 0
 	var finalContent string
+	consecutiveToolErrors := 0
+	consecutiveToolOnly := 0
+	const maxConsecutiveErrors = 3
+	const maxConsecutiveToolOnly = 10
 
 	for iteration < al.maxIterations {
 		iteration++
 
 		toolDefs := al.tools.GetDefinitions()
 		providerToolDefs := make([]providers.ToolDefinition, 0, len(toolDefs))
-		for _, td := range toolDefs {
-			providerToolDefs = append(providerToolDefs, providers.ToolDefinition{
-				Type: td["type"].(string),
-				Function: providers.ToolFunctionDefinition{
-					Name:        td["function"].(map[string]interface{})["name"].(string),
-					Description: td["function"].(map[string]interface{})["description"].(string),
-					Parameters:  td["function"].(map[string]interface{})["parameters"].(map[string]interface{}),
-				},
-			})
+
+		// If too many consecutive tool errors, stop providing tools to force a text response
+		if consecutiveToolErrors >= maxConsecutiveErrors {
+			log.Printf("[agent] Too many consecutive tool errors (%d), forcing text-only response", consecutiveToolErrors)
+			providerToolDefs = nil
+		} else {
+			for _, td := range toolDefs {
+				providerToolDefs = append(providerToolDefs, providers.ToolDefinition{
+					Type: td["type"].(string),
+					Function: providers.ToolFunctionDefinition{
+						Name:        td["function"].(map[string]interface{})["name"].(string),
+						Description: td["function"].(map[string]interface{})["description"].(string),
+						Parameters:  td["function"].(map[string]interface{})["parameters"].(map[string]interface{}),
+					},
+				})
+			}
 		}
 
 		log.Printf("[agent] Iteration %d: calling LLM (model=%s)...", iteration, al.model)
@@ -217,6 +228,23 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 			break
 		}
 
+		// Track consecutive tool-only iterations (no text content produced)
+		if response.Content == "" {
+			consecutiveToolOnly++
+		} else {
+			consecutiveToolOnly = 0
+		}
+
+		// Safety: break if too many consecutive tool-only iterations
+		if consecutiveToolOnly >= maxConsecutiveToolOnly {
+			log.Printf("[agent] Breaking: %d consecutive tool-only iterations with no text content", consecutiveToolOnly)
+			finalContent = response.Content
+			if finalContent == "" {
+				finalContent = "I've been working on your request but encountered difficulties. Could you try rephrasing or being more specific?"
+			}
+			break
+		}
+
 		assistantMsg := providers.Message{
 			Role:    "assistant",
 			Content: response.Content,
@@ -236,15 +264,17 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 		}
 		messages = append(messages, assistantMsg)
 
+		allFailed := true
 		for _, tc := range response.ToolCalls {
 			log.Printf("[agent] Executing tool: %s", tc.Name)
 			toolStart := time.Now()
 			result, err := al.tools.Execute(ctx, tc.Name, tc.Arguments)
 			if err != nil {
 				log.Printf("[agent] Tool %s failed after %s: %v", tc.Name, time.Since(toolStart), err)
-				result = fmt.Sprintf("Error: %v", err)
+				result = fmt.Sprintf("Error: %v\n\nHint: If this is a path error, make sure to use absolute paths. Your workspace is at an absolute path, not a relative one.", err)
 			} else {
 				log.Printf("[agent] Tool %s completed in %s (result=%d chars)", tc.Name, time.Since(toolStart), len(result))
+				allFailed = false
 			}
 
 			toolResultMsg := providers.Message{
@@ -253,6 +283,13 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 				ToolCallID: tc.ID,
 			}
 			messages = append(messages, toolResultMsg)
+		}
+
+		// Track consecutive all-failed tool iterations
+		if allFailed {
+			consecutiveToolErrors++
+		} else {
+			consecutiveToolErrors = 0
 		}
 	}
 
