@@ -155,34 +155,61 @@ func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 		c.stopThinking.Delete(msg.ChatID)
 	}
 
-	// Delete placeholder message
-	if pID, ok := c.placeholders.Load(msg.ChatID); ok {
-		c.placeholders.Delete(msg.ChatID)
-		deleteMsg := tgbotapi.NewDeleteMessage(chatID, pID.(int))
-		c.bot.Request(deleteMsg)
-	}
-
 	// Split long messages into chunks (Telegram limit ~4096 chars)
 	const maxLen = 4000
 	content := msg.Content
 	chunks := splitMessage(content, maxLen)
 
-	for _, chunk := range chunks {
+	for i, chunk := range chunks {
+		// Small delay between chunks to avoid rate limiting
+		if i > 0 {
+			time.Sleep(500 * time.Millisecond)
+		}
+
 		htmlContent := markdownToTelegramHTML(chunk)
 		tgMsg := tgbotapi.NewMessage(chatID, htmlContent)
 		tgMsg.ParseMode = tgbotapi.ModeHTML
 
-		if _, err := c.bot.Send(tgMsg); err != nil {
+		if err := c.sendWithRetry(tgMsg); err != nil {
 			// Fallback to plain text
 			tgMsg = tgbotapi.NewMessage(chatID, chunk)
 			tgMsg.ParseMode = ""
-			if _, err := c.bot.Send(tgMsg); err != nil {
+			if err := c.sendWithRetry(tgMsg); err != nil {
 				log.Printf("Failed to send chunk: %v", err)
 			}
 		}
 	}
 
 	return nil
+}
+
+// sendWithRetry sends a Telegram message with retry on rate limit (429)
+func (c *TelegramChannel) sendWithRetry(msg tgbotapi.Chattable) error {
+	maxRetries := 2
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		_, err := c.bot.Send(msg)
+		if err == nil {
+			return nil
+		}
+
+		errStr := err.Error()
+		// Check for rate limit (Too Many Requests)
+		if strings.Contains(errStr, "Too Many Requests") || strings.Contains(errStr, "retry after") {
+			waitSeconds := 3
+			if idx := strings.Index(errStr, "retry after "); idx >= 0 {
+				fmt.Sscanf(errStr[idx+len("retry after "):], "%d", &waitSeconds)
+			}
+			if waitSeconds > 10 {
+				waitSeconds = 10
+			}
+			log.Printf("[telegram] Rate limited, waiting %ds before retry (attempt %d/%d)", waitSeconds, attempt+1, maxRetries)
+			time.Sleep(time.Duration(waitSeconds) * time.Second)
+			continue
+		}
+
+		return err
+	}
+	return fmt.Errorf("failed after %d retries due to rate limiting", maxRetries)
 }
 
 // splitMessage splits text into chunks of maxLen, preferring to split at newlines
@@ -319,36 +346,25 @@ func (c *TelegramChannel) handleMessage(update tgbotapi.Update) {
 
 	log.Printf("Telegram message from %s: %s...", senderID, truncateString(content, 50))
 
-	// Thinking indicator
+	// Thinking indicator — use typing action only (lightweight, not rate-limited)
 	c.bot.Send(tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping))
 
 	stopChan := make(chan struct{})
 	c.stopThinking.Store(fmt.Sprintf("%d", chatID), stopChan)
 
-	pMsg, err := c.bot.Send(tgbotapi.NewMessage(chatID, "Thinking... 💭"))
-	if err == nil {
-		pID := pMsg.MessageID
-		c.placeholders.Store(fmt.Sprintf("%d", chatID), pID)
-
-		go func(cid int64, mid int, stop <-chan struct{}) {
-			dots := []string{".", "..", "..."}
-			emotes := []string{"💭", "🤔", "☁️"}
-			i := 0
-			ticker := time.NewTicker(2000 * time.Millisecond)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-stop:
-					return
-				case <-ticker.C:
-					i++
-					text := fmt.Sprintf("Thinking%s %s", dots[i%len(dots)], emotes[i%len(emotes)])
-					edit := tgbotapi.NewEditMessageText(cid, mid, text)
-					c.bot.Send(edit)
-				}
+	// Keep sending typing action until response is ready
+	go func(cid int64, stop <-chan struct{}) {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				c.bot.Send(tgbotapi.NewChatAction(cid, tgbotapi.ChatTyping))
 			}
-		}(chatID, pID, stopChan)
-	}
+		}
+	}(chatID, stopChan)
 
 	metadata := map[string]string{
 		"message_id": fmt.Sprintf("%d", message.MessageID),

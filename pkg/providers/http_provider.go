@@ -404,11 +404,25 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 		}
 		// OpenRouter expects prefixed model names, keep as-is
 
-	case strings.Contains(lowerModel, "claude") || strings.HasPrefix(model, "anthropic/"):
+	case strings.Contains(lowerModel, "claude"):
+		// Note: Anthropic's native API uses a different format (x-api-key header,
+		// non-OpenAI schema). For Claude, prefer using "anthropic/" prefix which
+		// routes through OpenRouter (OpenAI-compatible). This case is a fallback
+		// for users with a custom OpenAI-compatible Anthropic proxy.
 		apiKey = cfg.Providers.Anthropic.APIKey
 		apiBase = cfg.Providers.Anthropic.APIBase
 		if apiBase == "" {
-			apiBase = "https://api.anthropic.com/v1"
+			// Fall back to OpenRouter if no custom Anthropic base is configured
+			if cfg.Providers.OpenRouter.APIKey != "" {
+				apiKey = cfg.Providers.OpenRouter.APIKey
+				if cfg.Providers.OpenRouter.APIBase != "" {
+					apiBase = cfg.Providers.OpenRouter.APIBase
+				} else {
+					apiBase = "https://openrouter.ai/api/v1"
+				}
+			} else {
+				apiBase = "https://api.anthropic.com/v1"
+			}
 		}
 
 	case strings.Contains(lowerModel, "gpt"):
@@ -418,7 +432,7 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 			apiBase = "https://api.openai.com/v1"
 		}
 
-	case strings.Contains(lowerModel, "gemini") || strings.HasPrefix(model, "google/") || strings.HasPrefix(model, "gemini/"):
+	case strings.Contains(lowerModel, "gemini") || strings.HasPrefix(model, "gemini/"):
 		apiKey = cfg.Providers.Gemini.APIKey
 		apiBase = cfg.Providers.Gemini.APIBase
 		if apiBase == "" {
@@ -432,6 +446,7 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 		if apiBase == "" {
 			apiBase = "https://open.bigmodel.cn/api/paas/v4"
 		}
+		modelName = stripPrefix(model)
 
 	case strings.Contains(lowerModel, "groq") || strings.HasPrefix(model, "groq/"):
 		apiKey = cfg.Providers.Groq.APIKey
@@ -439,6 +454,7 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 		if apiBase == "" {
 			apiBase = "https://api.groq.com/openai/v1"
 		}
+		modelName = stripPrefix(model)
 
 	case cfg.Providers.VLLM.APIBase != "":
 		apiKey = cfg.Providers.VLLM.APIKey
