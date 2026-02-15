@@ -42,11 +42,12 @@ type AgentsConfig struct {
 }
 
 type AgentDefaults struct {
-	Workspace         string  `json:"workspace" env:"MCLAW_AGENTS_DEFAULTS_WORKSPACE"`
-	Model             string  `json:"model" env:"MCLAW_AGENTS_DEFAULTS_MODEL"`
-	MaxTokens         int     `json:"max_tokens" env:"MCLAW_AGENTS_DEFAULTS_MAX_TOKENS"`
-	Temperature       float64 `json:"temperature" env:"MCLAW_AGENTS_DEFAULTS_TEMPERATURE"`
-	MaxToolIterations int     `json:"max_tool_iterations" env:"MCLAW_AGENTS_DEFAULTS_MAX_TOOL_ITERATIONS"`
+	Workspace         string   `json:"workspace" env:"MCLAW_AGENTS_DEFAULTS_WORKSPACE"`
+	Model             string   `json:"model" env:"MCLAW_AGENTS_DEFAULTS_MODEL"`
+	FallbackModels    []string `json:"fallback_models"`
+	MaxTokens         int      `json:"max_tokens" env:"MCLAW_AGENTS_DEFAULTS_MAX_TOKENS"`
+	Temperature       float64  `json:"temperature" env:"MCLAW_AGENTS_DEFAULTS_TEMPERATURE"`
+	MaxToolIterations int      `json:"max_tool_iterations" env:"MCLAW_AGENTS_DEFAULTS_MAX_TOOL_ITERATIONS"`
 }
 
 type ChannelsConfig struct {

@@ -12,15 +12,15 @@ import (
 
 // Consolidator decides how to handle a new fact relative to existing memories.
 type Consolidator struct {
-	provider providers.LLMProvider
-	model    string
+	getProvider func() providers.LLMProvider
+	getModel    func() string
 }
 
 // NewConsolidator creates a new memory consolidator.
-func NewConsolidator(provider providers.LLMProvider, model string) *Consolidator {
+func NewConsolidator(getProvider func() providers.LLMProvider, getModel func() string) *Consolidator {
 	return &Consolidator{
-		provider: provider,
-		model:    model,
+		getProvider: getProvider,
+		getModel:    getModel,
 	}
 }
 
@@ -68,9 +68,9 @@ func (c *Consolidator) Consolidate(ctx context.Context, newFact string, existing
 
 	prompt := fmt.Sprintf(consolidatePrompt, newFact, memList.String())
 
-	response, err := c.provider.Chat(ctx, []providers.Message{
+	response, err := c.getProvider().Chat(ctx, []providers.Message{
 		{Role: "user", Content: prompt},
-	}, nil, c.model, map[string]interface{}{
+	}, nil, c.getModel(), map[string]interface{}{
 		"max_tokens":  512,
 		"temperature": 0.0,
 	})

@@ -31,6 +31,7 @@
 |---------|-------------|
 | 🌐 **Multi-Channel** | Telegram, Discord, WhatsApp, Feishu (Lark) |
 | 🤖 **Multi-LLM** | OpenAI, Claude, Gemini, Groq, DeepSeek, ZhiPu, OpenRouter, vLLM |
+| 🔄 **Model Fallback** | Auto-switch to fallback models on 429 rate limits, daily reset |
 | 💭 **Streaming + Thinking** | Real-time SSE with thinking display (Gemini 2.5, Claude Opus) |
 | 🛠️ **Tool Use** | File I/O, shell, web search (Brave), web fetch, headless browser |
 | 🧠 **Intelligent Memory** | Mem0-lite — auto-extracts & recalls facts across sessions |
@@ -118,7 +119,7 @@ chmod +x setup.sh
 The script will:
 - ✅ Detect your OS (macOS, Linux, Termux)
 - ✅ Check & install Chrome/Chromium (optional — for browser tool)
-- ✅ Create `mclawdata/config.json` from example
+- ✅ Create `config.json` next to the binary from example
 - ✅ Initialize workspace directories
 
 ### Option 2: Build from source
@@ -133,13 +134,24 @@ make build
 
 ### Configure
 
-Create `mclawdata/config.json` next to the binary (or copy from `config.example.json`):
+Create `config.json` next to the `mclaw` binary (or copy from `config.example.json`):
+
+```
+./
+├── mclaw                      # executable
+├── config.json                # configuration (API keys, channels)
+└── mclawdata/                 # runtime data (auto-created)
+    ├── workspace/
+    ├── sessions/
+    └── memory.db
+```
 
 ```jsonc
 {
   "agents": {
     "defaults": {
       "model": "gemini/gemini-2.5-pro",
+      "fallback_models": ["gemini/gemini-2.5-flash"],  // auto-switch on 429
       "max_tokens": 128000,
       "temperature": 0.75
     }
@@ -255,13 +267,7 @@ Set custom endpoints via `api_base` for proxies or self-hosted models.
 | `cron` | Add / list / remove scheduled jobs |
 | `heartbeat` | Add / list / remove / enable / disable periodic notes |
 
-> **Note:** The `browser` tool requires Chrome/Chromium installed on the system. If not found, it auto-disables gracefully and suggests using `web_fetch` instead. Install via `./setup.sh` or manually:
-> ```bash
-> # Ubuntu/Debian
-> sudo apt install chromium-browser
-> # macOS
-> brew install --cask chromium
-> ```
+> **Note:** The `browser` tool requires Chrome/Chromium installed on the system. If not found, it auto-disables gracefully and suggests using `web_fetch` instead.
 
 ---
 
@@ -309,8 +315,9 @@ mclawdata/workspace/skills/my-skill/
 # Build
 docker build -t mclaw .
 
-# Run (mount config directory)
+# Run (mount config + data)
 docker run -d --name mclaw \
+  -v ./config.json:/app/config.json \
   -v ./mclawdata:/app/mclawdata \
   mclaw
 ```
@@ -342,29 +349,32 @@ GOOS=windows GOARCH=amd64 go build -o dist/mclaw-windows.exe ./cmd/mclaw
 ## 📁 Project Structure
 
 ```
-cmd/mclaw/              CLI entry point & commands
+./
+├── mclaw                   Binary
+├── config.json             Configuration (API keys, channels, tools)
+cmd/mclaw/                  CLI entry point & commands
 pkg/
-├── agent/              Agent loop, context builder, tool execution
-├── bus/                Message bus (inbound/outbound)
-├── channels/           Telegram, Discord, WhatsApp, Feishu
-├── config/             Configuration loading & defaults
-├── cron/               Cron job scheduler
-├── heartbeat/          Periodic health checks
-├── logger/             Structured logging
-├── memory/             🧠 Mem0-lite memory engine
-│   ├── store.go            SQLite store (pure Go, no CGO)
-│   ├── embedder.go         Gemini/OpenAI embedding client
-│   ├── extractor.go        LLM fact extraction
-│   ├── consolidator.go     ADD/UPDATE/DELETE/NOOP logic
-│   └── engine.go           Pipeline orchestrator
-├── providers/          LLM provider (SSE streaming)
-├── session/            Session persistence & auto-summarization
-├── skills/             Skills loader & installer
-├── tools/              Tool registry & implementations
-└── voice/              Groq Whisper transcription
-skills/                 Built-in skill definitions
-docs/                   Banner & architecture images
-mclawdata/              Runtime data (config, workspace, sessions, memory.db)
+├── agent/                  Agent loop, model switcher, tool execution
+├── bus/                    Message bus (inbound/outbound)
+├── channels/               Telegram, Discord, WhatsApp, Feishu
+├── config/                 Configuration loading & defaults
+├── cron/                   Cron job scheduler
+├── heartbeat/              Periodic health checks
+├── logger/                 Structured logging
+├── memory/                 🧠 Mem0-lite memory engine
+│   ├── store.go                SQLite store (pure Go, no CGO)
+│   ├── embedder.go             Gemini/OpenAI embedding client
+│   ├── extractor.go            LLM fact extraction
+│   ├── consolidator.go         ADD/UPDATE/DELETE/NOOP logic
+│   └── engine.go               Pipeline orchestrator
+├── providers/              LLM provider (SSE streaming)
+├── session/                Session persistence & auto-summarization
+├── skills/                 Skills loader & installer
+├── tools/                  Tool registry (browser, cron, etc.)
+└── voice/                  Groq Whisper transcription
+skills/                     Built-in skill definitions
+docs/                       Banner & architecture images
+mclawdata/                  Runtime data (workspace, sessions, memory.db)
 ```
 
 ---

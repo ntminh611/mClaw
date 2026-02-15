@@ -24,7 +24,9 @@ type MemoryEngine struct {
 }
 
 // NewMemoryEngine initializes all memory components.
-func NewMemoryEngine(cfg *config.Config, provider providers.LLMProvider) (*MemoryEngine, error) {
+// providerGetter and modelGetter are used to dynamically resolve the current
+// active provider and model (e.g. from ModelSwitcher for fallback support).
+func NewMemoryEngine(cfg *config.Config, providerGetter func() providers.LLMProvider, modelGetter func() string) (*MemoryEngine, error) {
 	memCfg := cfg.Memory
 	if !memCfg.Enabled {
 		return nil, nil
@@ -51,14 +53,32 @@ func NewMemoryEngine(cfg *config.Config, provider providers.LLMProvider) (*Memor
 
 	embedder := NewEmbedder(embedAPIKey, memCfg.APIBase)
 
-	// Use agent's LLM for extraction and consolidation
-	extractModel := memCfg.ExtractModel
-	if extractModel == "" {
-		extractModel = cfg.Agents.Defaults.Model
-	}
+	// Determine provider/model for extraction and consolidation.
+	// If extract_model is explicitly set, create a dedicated provider for it.
+	// Otherwise, use the dynamic getters from ModelSwitcher for fallback support.
+	var extractor *Extractor
+	var consolidator *Consolidator
 
-	extractor := NewExtractor(provider, extractModel)
-	consolidator := NewConsolidator(provider, extractModel)
+	if memCfg.ExtractModel != "" {
+		// Dedicated model for memory operations — independent of agent's model
+		dedProvider, err := providers.CreateProviderForModel(cfg, memCfg.ExtractModel)
+		if err != nil {
+			log.Printf("[memory] Warning: Failed to create provider for extract_model %s, falling back to agent model: %v", memCfg.ExtractModel, err)
+			extractor = NewExtractor(providerGetter, modelGetter)
+			consolidator = NewConsolidator(providerGetter, modelGetter)
+		} else {
+			extractModel := memCfg.ExtractModel
+			staticProvider := func() providers.LLMProvider { return dedProvider }
+			staticModel := func() string { return extractModel }
+			extractor = NewExtractor(staticProvider, staticModel)
+			consolidator = NewConsolidator(staticProvider, staticModel)
+			log.Printf("[memory] Using dedicated extract_model: %s", extractModel)
+		}
+	} else {
+		// Dynamic — follows ModelSwitcher (agent's current active model)
+		extractor = NewExtractor(providerGetter, modelGetter)
+		consolidator = NewConsolidator(providerGetter, modelGetter)
+	}
 
 	// Apply defaults
 	if memCfg.TopK <= 0 {

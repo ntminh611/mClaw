@@ -28,6 +28,7 @@ import (
 type AgentLoop struct {
 	bus            *bus.MessageBus
 	provider       providers.LLMProvider
+	switcher       *ModelSwitcher
 	workspace      string
 	model          string
 	contextWindow  int
@@ -59,11 +60,14 @@ func NewAgentLoop(cfg *config.Config, bus *bus.MessageBus, provider providers.LL
 
 	sessionsManager := session.NewSessionManager(filepath.Join(filepath.Dir(cfg.WorkspacePath()), "sessions"))
 
+	switcher := NewModelSwitcher(cfg, provider)
+
 	// Initialize Mem0-lite memory engine
 	var memEngine *memory.MemoryEngine
 	if cfg.Memory.Enabled {
 		var err error
-		memEngine, err = memory.NewMemoryEngine(cfg, provider)
+		// Use ModelSwitcher's getters so memory always uses the current active model
+		memEngine, err = memory.NewMemoryEngine(cfg, switcher.CurrentProvider, switcher.CurrentModel)
 		if err != nil {
 			log.Printf("[agent] Warning: Failed to initialize memory engine: %v", err)
 		} else if memEngine != nil {
@@ -74,6 +78,7 @@ func NewAgentLoop(cfg *config.Config, bus *bus.MessageBus, provider providers.LL
 	return &AgentLoop{
 		bus:            bus,
 		provider:       provider,
+		switcher:       switcher,
 		workspace:      workspace,
 		model:          cfg.Agents.Defaults.Model,
 		contextWindow:  cfg.Agents.Defaults.MaxTokens,
@@ -206,10 +211,11 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 			}
 		}
 
-		log.Printf("[agent] Iteration %d: calling LLM (model=%s)...", iteration, al.model)
+		activeModel := al.switcher.CurrentModel()
+		log.Printf("[agent] Iteration %d: calling LLM (model=%s)...", iteration, activeModel)
 		llmStart := time.Now()
 
-		response, err := al.provider.Chat(ctx, messages, providerToolDefs, al.model, map[string]interface{}{
+		response, err := al.switcher.Chat(ctx, messages, providerToolDefs, map[string]interface{}{
 			"max_tokens":  8192,
 			"temperature": 0.7,
 		})

@@ -93,6 +93,11 @@ func (p *HTTPProvider) Chat(ctx context.Context, messages []Message, tools []Too
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == 429 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, &RateLimitError{StatusCode: 429, Body: string(body)}
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
@@ -354,8 +359,10 @@ func (p *HTTPProvider) GetDefaultModel() string {
 }
 
 func CreateProvider(cfg *config.Config) (LLMProvider, error) {
-	model := cfg.Agents.Defaults.Model
+	return CreateProviderForModel(cfg, cfg.Agents.Defaults.Model)
+}
 
+func CreateProviderForModel(cfg *config.Config, model string) (LLMProvider, error) {
 	var apiKey, apiBase string
 
 	lowerModel := strings.ToLower(model)

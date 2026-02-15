@@ -12,15 +12,15 @@ import (
 
 // Extractor extracts salient facts from conversations using an LLM.
 type Extractor struct {
-	provider providers.LLMProvider
-	model    string
+	getProvider func() providers.LLMProvider
+	getModel    func() string
 }
 
-// NewExtractor creates a fact extractor using the given LLM provider.
-func NewExtractor(provider providers.LLMProvider, model string) *Extractor {
+// NewExtractor creates a fact extractor using dynamic provider/model getters.
+func NewExtractor(getProvider func() providers.LLMProvider, getModel func() string) *Extractor {
 	return &Extractor{
-		provider: provider,
-		model:    model,
+		getProvider: getProvider,
+		getModel:    getModel,
 	}
 }
 
@@ -60,9 +60,9 @@ func (e *Extractor) Extract(ctx context.Context, messages []providers.Message) (
 
 	prompt := extractPrompt + conv.String()
 
-	response, err := e.provider.Chat(ctx, []providers.Message{
+	response, err := e.getProvider().Chat(ctx, []providers.Message{
 		{Role: "user", Content: prompt},
-	}, nil, e.model, map[string]interface{}{
+	}, nil, e.getModel(), map[string]interface{}{
 		"max_tokens":  1024,
 		"temperature": 0.0, // deterministic extraction
 	})

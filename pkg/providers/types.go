@@ -1,6 +1,26 @@
 package providers
 
-import "context"
+import (
+	"context"
+	"errors"
+	"fmt"
+)
+
+// RateLimitError represents a 429 rate limit error from an API.
+type RateLimitError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *RateLimitError) Error() string {
+	return fmt.Sprintf("API rate limit %d: %s", e.StatusCode, e.Body)
+}
+
+// IsRateLimitError checks if an error is a rate limit error.
+func IsRateLimitError(err error) bool {
+	var rle *RateLimitError
+	return errors.As(err, &rle)
+}
 
 type ToolCall struct {
 	ID           string                 `json:"id"`

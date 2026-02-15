@@ -817,7 +817,7 @@ func getMClawHome() string {
 }
 
 func getConfigPath() string {
-	return filepath.Join(getMClawHome(), "config.json")
+	return filepath.Join(getExeDir(), "config.json")
 }
 
 func loadConfig() (*config.Config, error) {
