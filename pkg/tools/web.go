@@ -14,30 +14,30 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
-type WebSearchTool struct {
+type BraveSearchTool struct {
 	apiKey     string
 	maxResults int
 }
 
-func NewWebSearchTool(apiKey string, maxResults int) *WebSearchTool {
+func NewBraveSearchTool(apiKey string, maxResults int) *BraveSearchTool {
 	if maxResults <= 0 || maxResults > 10 {
 		maxResults = 5
 	}
-	return &WebSearchTool{
+	return &BraveSearchTool{
 		apiKey:     apiKey,
 		maxResults: maxResults,
 	}
 }
 
-func (t *WebSearchTool) Name() string {
+func (t *BraveSearchTool) Name() string {
 	return "web_search"
 }
 
-func (t *WebSearchTool) Description() string {
-	return "Search the web. Returns titles, URLs, and snippets."
+func (t *BraveSearchTool) Description() string {
+	return "Search the web using Brave Search. Returns titles, URLs, and snippets."
 }
 
-func (t *WebSearchTool) Parameters() map[string]interface{} {
+func (t *BraveSearchTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
@@ -56,7 +56,7 @@ func (t *WebSearchTool) Parameters() map[string]interface{} {
 	}
 }
 
-func (t *WebSearchTool) Execute(ctx context.Context, args map[string]interface{}) (string, error) {
+func (t *BraveSearchTool) Execute(ctx context.Context, args map[string]interface{}) (string, error) {
 	if t.apiKey == "" {
 		return "Error: BRAVE_API_KEY not configured", nil
 	}

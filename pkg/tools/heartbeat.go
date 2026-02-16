@@ -162,10 +162,3 @@ func (t *HeartbeatTool) enableNote(args map[string]interface{}, enable bool) (st
 	}
 	return fmt.Sprintf("✓ Note '%s' %s", note.Content[:min(50, len(note.Content))], status), nil
 }
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}

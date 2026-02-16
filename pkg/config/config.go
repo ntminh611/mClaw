@@ -100,8 +100,15 @@ type ProviderConfig struct {
 }
 
 type WebSearchConfig struct {
-	APIKey     string `json:"api_key" env:"MCLAW_TOOLS_WEB_SEARCH_API_KEY"`
-	MaxResults int    `json:"max_results" env:"MCLAW_TOOLS_WEB_SEARCH_MAX_RESULTS"`
+	Provider   string             `json:"provider" env:"MCLAW_TOOLS_WEB_SEARCH_PROVIDER"` // "brave" (default) or "google"
+	APIKey     string             `json:"api_key" env:"MCLAW_TOOLS_WEB_SEARCH_API_KEY"`   // Brave API key
+	MaxResults int                `json:"max_results" env:"MCLAW_TOOLS_WEB_SEARCH_MAX_RESULTS"`
+	Google     GoogleSearchConfig `json:"google"`
+}
+
+type GoogleSearchConfig struct {
+	APIKey string `json:"api_key" env:"MCLAW_TOOLS_WEB_SEARCH_GOOGLE_API_KEY"` // Google API key
+	CX     string `json:"cx" env:"MCLAW_TOOLS_WEB_SEARCH_GOOGLE_CX"`           // Programmable Search Engine ID
 }
 
 type WebToolsConfig struct {
@@ -160,8 +167,10 @@ func DefaultConfig() *Config {
 		Tools: ToolsConfig{
 			Web: WebToolsConfig{
 				Search: WebSearchConfig{
+					Provider:   "brave",
 					APIKey:     "",
 					MaxResults: 5,
+					Google:     GoogleSearchConfig{},
 				},
 			},
 		},

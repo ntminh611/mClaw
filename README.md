@@ -33,7 +33,7 @@
 | 🤖 **Multi-LLM** | OpenAI, Claude, Gemini, Groq, DeepSeek, ZhiPu, OpenRouter, vLLM |
 | 🔄 **Model Fallback** | Auto-switch to fallback models on 429 rate limits, daily reset |
 | 💭 **Streaming + Thinking** | Real-time SSE with thinking display (Gemini 2.5, Claude Opus) |
-| 🛠️ **Tool Use** | File I/O, shell, web search (Brave), web fetch, headless browser |
+| 🛠️ **Tool Use** | File I/O, shell, web search (Brave / Google), web fetch, headless browser |
 | 🧠 **Intelligent Memory** | Mem0-lite — auto-extracts & recalls facts across sessions |
 | 📚 **Skills** | Modular knowledge packs, install from GitHub |
 | 🎙️ **Voice** | Speech-to-text via Groq Whisper |
@@ -261,13 +261,58 @@ Set custom endpoints via `api_base` for proxies or self-hosted models.
 | `write_file` | Write / create files |
 | `list_dir` | List directory contents |
 | `exec` | Execute shell commands |
-| `web_search` | Search web (Brave API) |
+| `web_search` | Search web (Brave or Google) |
 | `web_fetch` | Fetch & extract text from URLs |
 | `browser` | Headless Chrome — auto-disabled if Chrome not installed |
 | `cron` | Add / list / remove scheduled jobs |
 | `heartbeat` | Add / list / remove / enable / disable periodic notes |
 
 > **Note:** The `browser` tool requires Chrome/Chromium installed on the system. If not found, it auto-disables gracefully and suggests using `web_fetch` instead.
+
+### 🔍 Web Search Configuration
+
+MClaw supports two search providers: **Brave Search** (default) and **Google Custom Search**.
+
+**Brave Search** (default):
+```jsonc
+"tools": {
+  "web": {
+    "search": {
+      "provider": "brave",          // or omit — brave is default
+      "api_key": "YOUR_BRAVE_KEY",  // Get at https://brave.com/search/api/
+      "max_results": 5
+    }
+  }
+}
+```
+
+**Google Custom Search**:
+```jsonc
+"tools": {
+  "web": {
+    "search": {
+      "provider": "google",
+      "max_results": 5,
+      "google": {
+        "api_key": "YOUR_GOOGLE_KEY",  // Google Cloud API key
+        "cx": "YOUR_SEARCH_ENGINE_ID"  // Programmable Search Engine ID
+      }
+    }
+  }
+}
+```
+
+<details>
+<summary><strong>How to get Google Search credentials</strong></summary>
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a project → **APIs & Services** → **Library** → Enable **Custom Search API**
+3. **APIs & Services** → **Credentials** → **Create Credentials** → **API key** → copy as `google.api_key`
+4. Go to [Programmable Search Engine](https://programmablesearchengine.google.com/) → **Add** → enable "Search the entire web" → copy **Search engine ID** as `google.cx`
+
+> Free tier: 100 queries/day. Additional: $5/1000 queries.
+
+</details>
 
 ---
 
