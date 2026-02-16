@@ -4,7 +4,10 @@
 
 package memory
 
-import "time"
+import (
+	"math"
+	"time"
+)
 
 // MemoryItem represents a single memory fact stored in the system.
 type MemoryItem struct {
@@ -82,17 +85,5 @@ func CosineSimilarity(a, b []float32) float64 {
 		return 0
 	}
 
-	return dotProduct / (sqrt(normA) * sqrt(normB))
-}
-
-// sqrt is a simple square root implementation to avoid importing math.
-func sqrt(x float64) float64 {
-	if x <= 0 {
-		return 0
-	}
-	z := x
-	for i := 0; i < 100; i++ {
-		z = z - (z*z-x)/(2*z)
-	}
-	return z
+	return dotProduct / (math.Sqrt(normA) * math.Sqrt(normB))
 }

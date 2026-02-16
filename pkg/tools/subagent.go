@@ -55,7 +55,12 @@ func (sm *SubagentManager) Spawn(ctx context.Context, task, label, originChannel
 	}
 	sm.tasks[taskID] = subagentTask
 
-	go sm.runTask(ctx, subagentTask)
+	// Use a detached context so the subagent survives after the parent request completes
+	taskCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	go func() {
+		defer cancel()
+		sm.runTask(taskCtx, subagentTask)
+	}()
 
 	if label != "" {
 		return fmt.Sprintf("Spawned subagent '%s' for task: %s", label, task), nil

@@ -3,6 +3,7 @@ package channels
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 
 	"github.com/ntminh611/mclaw/pkg/bus"
 )
@@ -19,7 +20,7 @@ type Channel interface {
 type BaseChannel struct {
 	config    interface{}
 	bus       *bus.MessageBus
-	running   bool
+	running   atomic.Bool
 	name      string
 	allowList []string
 }
@@ -30,7 +31,6 @@ func NewBaseChannel(name string, config interface{}, bus *bus.MessageBus, allowL
 		bus:       bus,
 		name:      name,
 		allowList: allowList,
-		running:   false,
 	}
 }
 
@@ -39,7 +39,7 @@ func (c *BaseChannel) Name() string {
 }
 
 func (c *BaseChannel) IsRunning() bool {
-	return c.running
+	return c.running.Load()
 }
 
 func (c *BaseChannel) IsAllowed(senderID string) bool {
@@ -82,5 +82,5 @@ func (c *BaseChannel) HandleMessage(senderID, chatID, content string, media []st
 }
 
 func (c *BaseChannel) setRunning(running bool) {
-	c.running = running
+	c.running.Store(running)
 }

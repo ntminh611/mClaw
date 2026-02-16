@@ -10,7 +10,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/ntminh611/mclaw/pkg/bus"
 	"github.com/ntminh611/mclaw/pkg/config"
+	"github.com/ntminh611/mclaw/pkg/logger"
 	"github.com/ntminh611/mclaw/pkg/memory"
 	"github.com/ntminh611/mclaw/pkg/providers"
 	"github.com/ntminh611/mclaw/pkg/session"
@@ -69,9 +69,9 @@ func NewAgentLoop(cfg *config.Config, bus *bus.MessageBus, provider providers.LL
 		// Use ModelSwitcher's getters so memory always uses the current active model
 		memEngine, err = memory.NewMemoryEngine(cfg, switcher.CurrentProvider, switcher.CurrentModel)
 		if err != nil {
-			log.Printf("[agent] Warning: Failed to initialize memory engine: %v", err)
+			logger.WarnC("agent", fmt.Sprintf("Failed to initialize memory engine: %v", err))
 		} else if memEngine != nil {
-			log.Printf("[agent] Mem0-lite memory engine enabled")
+			logger.InfoC("agent", "Mem0-lite memory engine enabled")
 		}
 	}
 
@@ -167,7 +167,7 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 	if al.memory != nil {
 		recalled, err := al.memory.RecallMemories(ctx, msg.SenderID, msg.Content, 0)
 		if err != nil {
-			log.Printf("[agent] Memory recall failed: %v", err)
+			logger.WarnC("agent", fmt.Sprintf("Memory recall failed: %v", err))
 		} else {
 			memories = recalled
 		}
@@ -196,7 +196,7 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 
 		// If too many consecutive tool errors, stop providing tools to force a text response
 		if consecutiveToolErrors >= maxConsecutiveErrors {
-			log.Printf("[agent] Too many consecutive tool errors (%d), forcing text-only response", consecutiveToolErrors)
+			logger.WarnC("agent", fmt.Sprintf("Too many consecutive tool errors (%d), forcing text-only response", consecutiveToolErrors))
 			providerToolDefs = nil
 		} else {
 			for _, td := range toolDefs {
@@ -212,7 +212,7 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 		}
 
 		activeModel := al.switcher.CurrentModel()
-		log.Printf("[agent] Iteration %d: calling LLM (model=%s)...", iteration, activeModel)
+		logger.InfoC("agent", fmt.Sprintf("Iteration %d: calling LLM (model=%s)...", iteration, activeModel))
 		llmStart := time.Now()
 
 		response, err := al.switcher.Chat(ctx, messages, providerToolDefs, map[string]interface{}{
@@ -222,12 +222,12 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 
 		llmDuration := time.Since(llmStart)
 		if err != nil {
-			log.Printf("[agent] LLM call failed after %s: %v", llmDuration, err)
+			logger.ErrorC("agent", fmt.Sprintf("LLM call failed after %s: %v", llmDuration, err))
 			return "", fmt.Errorf("LLM call failed: %w", err)
 		}
 
-		log.Printf("[agent] LLM responded in %s (content=%d chars, thinking=%d chars, tools=%d)",
-			llmDuration, len(response.Content), len(response.Thinking), len(response.ToolCalls))
+		logger.InfoC("agent", fmt.Sprintf("LLM responded in %s (content=%d chars, thinking=%d chars, tools=%d)",
+			llmDuration, len(response.Content), len(response.Thinking), len(response.ToolCalls)))
 
 		// Send thinking content to user if available
 		if response.Thinking != "" && msg.Channel != "cli" {
@@ -256,7 +256,7 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 
 		// Safety: break if too many consecutive tool-only iterations
 		if consecutiveToolOnly >= maxConsecutiveToolOnly {
-			log.Printf("[agent] Breaking: %d consecutive tool-only iterations with no text content", consecutiveToolOnly)
+			logger.WarnC("agent", fmt.Sprintf("Breaking: %d consecutive tool-only iterations with no text content", consecutiveToolOnly))
 			finalContent = response.Content
 			if finalContent == "" {
 				finalContent = "I've been working on your request but encountered difficulties. Could you try rephrasing or being more specific?"
@@ -285,14 +285,14 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 
 		allFailed := true
 		for _, tc := range response.ToolCalls {
-			log.Printf("[agent] Executing tool: %s", tc.Name)
+			logger.InfoC("agent", fmt.Sprintf("Executing tool: %s", tc.Name))
 			toolStart := time.Now()
 			result, err := al.tools.Execute(ctx, tc.Name, tc.Arguments)
 			if err != nil {
-				log.Printf("[agent] Tool %s failed after %s: %v", tc.Name, time.Since(toolStart), err)
+				logger.ErrorC("agent", fmt.Sprintf("Tool %s failed after %s: %v", tc.Name, time.Since(toolStart), err))
 				result = fmt.Sprintf("Error: %v\n\nHint: If this is a path error, make sure to use absolute paths. Your workspace is at an absolute path, not a relative one.", err)
 			} else {
-				log.Printf("[agent] Tool %s completed in %s (result=%d chars)", tc.Name, time.Since(toolStart), len(result))
+				logger.InfoC("agent", fmt.Sprintf("Tool %s completed in %s (result=%d chars)", tc.Name, time.Since(toolStart), len(result)))
 				allFailed = false
 			}
 

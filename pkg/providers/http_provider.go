@@ -13,12 +13,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/ntminh611/mclaw/pkg/config"
+	"github.com/ntminh611/mclaw/pkg/logger"
 )
 
 type HTTPProvider struct {
@@ -74,7 +74,7 @@ func (p *HTTPProvider) Chat(ctx context.Context, messages []Message, tools []Too
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	log.Printf("[llm] POST %s/chat/completions (model=%s, messages=%d, stream=true)", p.apiBase, actualModel, len(messages))
+	logger.InfoC("llm", fmt.Sprintf("POST %s/chat/completions (model=%s, messages=%d, stream=true)", p.apiBase, actualModel, len(messages)))
 
 	req, err := http.NewRequestWithContext(ctx, "POST", p.apiBase+"/chat/completions", bytes.NewReader(jsonData))
 	if err != nil {
@@ -111,7 +111,7 @@ func (p *HTTPProvider) Chat(ctx context.Context, messages []Message, tools []Too
 		if err != nil {
 			return nil, fmt.Errorf("failed to read response: %w", err)
 		}
-		log.Printf("[llm] Non-streamed response (%d bytes)", len(body))
+		logger.InfoC("llm", fmt.Sprintf("Non-streamed response (%d bytes)", len(body)))
 		return p.parseResponse(body)
 	}
 
@@ -188,7 +188,7 @@ func (p *HTTPProvider) parseStreamResponse(body io.Reader) (*LLMResponse, error)
 		if thinking != "" {
 			if !thinkingDone {
 				if thinkingBuilder.Len() == 0 {
-					log.Printf("[thinking] 💭 Model is thinking...")
+					logger.InfoC("thinking", "💭 Model is thinking...")
 				}
 				thinkingBuilder.WriteString(thinking)
 				// Log thinking progress periodically (every ~200 chars)
@@ -199,7 +199,7 @@ func (p *HTTPProvider) parseStreamResponse(body io.Reader) (*LLMResponse, error)
 					if len(snippet) > 100 {
 						snippet = "..." + snippet[len(snippet)-100:]
 					}
-					log.Printf("[thinking] %s", snippet)
+					logger.DebugC("thinking", snippet)
 				}
 			}
 		}
@@ -208,7 +208,7 @@ func (p *HTTPProvider) parseStreamResponse(body io.Reader) (*LLMResponse, error)
 		if delta.Content != "" {
 			if !thinkingDone && thinkingBuilder.Len() > 0 {
 				thinkingDone = true
-				log.Printf("[thinking] ✅ Thinking complete (%d chars)", thinkingBuilder.Len())
+				logger.InfoC("thinking", fmt.Sprintf("✅ Thinking complete (%d chars)", thinkingBuilder.Len()))
 			}
 			contentBuilder.WriteString(delta.Content)
 		}
@@ -271,8 +271,8 @@ func (p *HTTPProvider) parseStreamResponse(body io.Reader) (*LLMResponse, error)
 	content := contentBuilder.String()
 	thinking := thinkingBuilder.String()
 
-	log.Printf("[llm] Stream complete: content=%d chars, thinking=%d chars, tools=%d",
-		len(content), len(thinking), len(toolCalls))
+	logger.InfoC("llm", fmt.Sprintf("Stream complete: content=%d chars, thinking=%d chars, tools=%d",
+		len(content), len(thinking), len(toolCalls)))
 
 	return &LLMResponse{
 		Content:      content,

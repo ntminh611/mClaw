@@ -3,12 +3,12 @@ package memory
 import (
 	"context"
 	"fmt"
-	"log"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/ntminh611/mclaw/pkg/config"
+	"github.com/ntminh611/mclaw/pkg/logger"
 	"github.com/ntminh611/mclaw/pkg/providers"
 )
 
@@ -63,7 +63,7 @@ func NewMemoryEngine(cfg *config.Config, providerGetter func() providers.LLMProv
 		// Dedicated model for memory operations — independent of agent's model
 		dedProvider, err := providers.CreateProviderForModel(cfg, memCfg.ExtractModel)
 		if err != nil {
-			log.Printf("[memory] Warning: Failed to create provider for extract_model %s, falling back to agent model: %v", memCfg.ExtractModel, err)
+			logger.WarnC("memory", fmt.Sprintf("Failed to create provider for extract_model %s, falling back to agent model: %v", memCfg.ExtractModel, err))
 			extractor = NewExtractor(providerGetter, modelGetter)
 			consolidator = NewConsolidator(providerGetter, modelGetter)
 		} else {
@@ -72,7 +72,7 @@ func NewMemoryEngine(cfg *config.Config, providerGetter func() providers.LLMProv
 			staticModel := func() string { return extractModel }
 			extractor = NewExtractor(staticProvider, staticModel)
 			consolidator = NewConsolidator(staticProvider, staticModel)
-			log.Printf("[memory] Using dedicated extract_model: %s", extractModel)
+			logger.InfoC("memory", fmt.Sprintf("Using dedicated extract_model: %s", extractModel))
 		}
 	} else {
 		// Dynamic — follows ModelSwitcher (agent's current active model)
@@ -99,8 +99,8 @@ func NewMemoryEngine(cfg *config.Config, providerGetter func() providers.LLMProv
 		cfg:          memCfg,
 	}
 
-	log.Printf("[memory] Engine initialized (embedding=gemini/%s, topK=%d, minScore=%.2f)",
-		geminiEmbedModel, memCfg.TopK, memCfg.MinScore)
+	logger.InfoC("memory", fmt.Sprintf("Engine initialized (embedding=gemini/%s, topK=%d, minScore=%.2f)",
+		geminiEmbedModel, memCfg.TopK, memCfg.MinScore))
 
 	return engine, nil
 }
@@ -115,20 +115,20 @@ func (e *MemoryEngine) RecallMemories(ctx context.Context, userID, query string,
 	// Embed the query
 	queryEmb, err := e.embedder.Embed(ctx, query)
 	if err != nil {
-		log.Printf("[memory] Failed to embed query: %v", err)
+		logger.WarnC("memory", fmt.Sprintf("Failed to embed query: %v", err))
 		return nil, err
 	}
 
 	// Search for similar memories
 	results, err := e.store.Search(queryEmb, userID, topK, e.cfg.MinScore)
 	if err != nil {
-		log.Printf("[memory] Search failed: %v", err)
+		logger.WarnC("memory", fmt.Sprintf("Search failed: %v", err))
 		return nil, err
 	}
 
 	if len(results) > 0 {
-		log.Printf("[memory] Recalled %d memories for user %s (query: %s)",
-			len(results), userID, truncate(query, 50))
+		logger.InfoC("memory", fmt.Sprintf("Recalled %d memories for user %s (query: %s)",
+			len(results), userID, truncate(query, 50)))
 	}
 
 	return results, nil
@@ -150,7 +150,7 @@ func (e *MemoryEngine) ProcessConversation(ctx context.Context, userID string, m
 	// Step 1: Extract facts
 	facts, err := e.extractor.Extract(processCtx, messages)
 	if err != nil {
-		log.Printf("[memory] Extraction failed for user %s: %v", userID, err)
+		logger.WarnC("memory", fmt.Sprintf("Extraction failed for user %s: %v", userID, err))
 		return
 	}
 
@@ -158,18 +158,18 @@ func (e *MemoryEngine) ProcessConversation(ctx context.Context, userID string, m
 		return
 	}
 
-	log.Printf("[memory] Processing %d extracted facts for user %s", len(facts), userID)
+	logger.InfoC("memory", fmt.Sprintf("Processing %d extracted facts for user %s", len(facts), userID))
 
 	// Step 2: For each fact, embed → search similar → consolidate → store
 	for _, fact := range facts {
 		if err := e.processFact(processCtx, userID, fact); err != nil {
-			log.Printf("[memory] Failed to process fact '%s': %v", truncate(fact.Content, 50), err)
+			logger.WarnC("memory", fmt.Sprintf("Failed to process fact '%s': %v", truncate(fact.Content, 50), err))
 		}
 	}
 
 	// Step 3: Prune if over limit
 	if _, err := e.store.Prune(userID, e.cfg.MaxMemories); err != nil {
-		log.Printf("[memory] Prune failed for user %s: %v", userID, err)
+		logger.WarnC("memory", fmt.Sprintf("Prune failed for user %s: %v", userID, err))
 	}
 }
 
@@ -230,7 +230,7 @@ func (e *MemoryEngine) processFact(ctx context.Context, userID string, fact Extr
 		}
 
 	case ActionNoop:
-		log.Printf("[memory] NOOP: %s (%s)", truncate(fact.Content, 50), result.Reason)
+		logger.InfoC("memory", fmt.Sprintf("NOOP: %s (%s)", truncate(fact.Content, 50), result.Reason))
 	}
 
 	return nil
